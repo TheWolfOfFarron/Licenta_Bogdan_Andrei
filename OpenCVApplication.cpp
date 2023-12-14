@@ -9,34 +9,261 @@ wchar_t* projectPath;
 
 
 
-void testNeo1() {
+
+
+// Function to calculate brightness contrast
+double calculateBrightnessContrast(const Mat& patch) {
+	// Calculate the mean intensity of the patch (excluding the central pixel)
+	Scalar meanIntensity = mean(patch(Rect(1, 1, patch.cols - 2, patch.rows - 2)));
+
+	// Get the intensity of the central pixel
+	double centralIntensity = patch.at<uchar>(1, 1);
+
+	// Calculate brightness contrast
+	double brightnessContrast = std::abs(centralIntensity - meanIntensity[0]);
+
+	// Normalize to the range [0, 1]
+	brightnessContrast /= 255.0;
+
+	return brightnessContrast;
+}
+
+// Function to calculate positional distance between two patches
+double calculatePositionalDistance(const Rect& patch1Rect, const Rect& patch2Rect) {
+	// Calculate the center of each patch
+	Point2f center1(patch1Rect.x + patch1Rect.width / 2.0, patch1Rect.y + patch1Rect.height / 2.0);
+	Point2f center2(patch2Rect.x + patch2Rect.width / 2.0, patch2Rect.y + patch2Rect.height / 2.0);
+
+	// Calculate Euclidean distance between the centers
+	double positionalDistance = norm(center1 - center2);
+
+	// Normalize to the range [0, 1] based on the image size
+	positionalDistance /= max(patch1Rect.width, patch1Rect.height);
+
+	return positionalDistance;
+}
+
+
+
+
+
+
+Mat calculateOrientationContrast(const Mat& patch) {
+	Mat orientationContrast;
+	double brightnessContrast = calculateBrightnessContrast(patch);
+	// Parameters for Gabor filter
+	int kernelSize = 31;  // Adjust as needed
+	double sigma = 5.0;   // Adjust as needed
+	double theta[4] = { 0, CV_PI / 4, CV_PI / 2, 3 * CV_PI / 4 };
+
+	// Initialize the result matrix
+	orientationContrast = Mat::zeros(patch.size(), CV_64F);
+
+	// Apply Gabor filter at four different orientations
+	for (int i = 0; i < 4; ++i) {
+		// Create Gabor kernel
+		Mat gaborKernel = getGaborKernel(Size(kernelSize, kernelSize), sigma, theta[i], 10.0, 0.5, 0, CV_64F);
+
+		// Apply filter to the patch
+		Mat filteredImage;
+		filter2D(patch, filteredImage, CV_64F, gaborKernel);
+
+		// Accumulate squared response for orientation contrast
+		multiply(filteredImage, filteredImage, filteredImage);  // Element-wise multiplication
+		orientationContrast += filteredImage;
+	}
+
+	// Normalize the orientationContrast matrix to the range [0, 1]
+	normalize(orientationContrast, orientationContrast, 0, 1, NORM_MINMAX);
+
+
+	Rect patchRect(0, 0, patch.cols, patch.rows);  // Assuming the input patch is the entire patch
+	double positionalDistance = calculatePositionalDistance(patchRect, patchRect);
+
+	Mat distinctiveness = brightnessContrast * orientationContrast;
+
+	return orientationContrast;
+}
+
+// Function to calculate distinctiveness measure using Eq. (2)
+double calculateDistinctiveness(const double brightnessContrast, const Mat& orientationContrast, double positionalDistance) {
+	// TODO: Implement Eq. (2) to calculate distinctiveness measure
+	double c = 3.0; // You may adjust the value of c
+
+	// Calculate distinctiveness using the provided formula
+	Mat distinctiveness = (brightnessContrast + orientationContrast) / (2 * (1 + c * positionalDistance));
+
+
+
+	return sum(distinctiveness)[0];
+}
+
+
+
+
+
+Mat multiScaleSaliencyDetection(const Mat& inputImage, int K) {
+	Mat saliencyMap;
+
+	// Parameters for multi-scale saliency detection
+	std::vector<double> scales = { 1.0, 0.8, 0.5, 0.3 };  // Adjust as needed
+	int patchSize = 7;  // Adjust as needed
+	int overlap = 50;   // Percentage overlap
+	int numPatches = K;
+
+	// Initialize the saliency map
+	saliencyMap = Mat::zeros(inputImage.size(), CV_64F);
+
+	// Loop over each scale
+	for (double scale : scales) {
+		// Resize the image
+		Mat resizedImage;
+		resize(inputImage, resizedImage, Size(), scale, scale);
+
+		// Calculate the saliency map at the current scale
+		for (int i = 0; i < numPatches; ++i) {
+			int x = rand() % (resizedImage.cols - patchSize + 1);
+			int y = rand() % (resizedImage.rows - patchSize + 1);
+
+			// Extract the patch
+			Rect patchRect(x, y, patchSize, patchSize);
+			Mat patch = resizedImage(patchRect);
+
+			// TODO: Calculate brightness contrast
+			double brightnessContrast = calculateBrightnessContrast(patch);
+			std::cout << "Debug Message: This point is reached 1." << std::endl;
+			// TODO: Calculate orientation contrast
+			Mat orientationContrast = calculateOrientationContrast(patch);
+			std::cout << "Debug Message: This point is reached 2." << std::endl;
+			// TODO: Calculate positional distance
+			double positionalDistance = calculatePositionalDistance(patchRect, patchRect);
+			std::cout << "Debug Message: This point is reached 3." << std::endl;
+			// TODO: Calculate distinctiveness using Eq. (2)
+			double distinctiveness = calculateDistinctiveness(brightnessContrast, orientationContrast, positionalDistance);
+			std::cout << "Debug Message: This point is reached 4." << std::endl;
+			// TODO: Calculate saliency value at pixel (x, y) using Eq. (4)
+			double saliencyValue = 1.0 / (1.0 + exp(-distinctiveness));
+			std::cout << "Debug Message: This point is reached 5." << std::endl;
+
+			// Update the saliency map
+			saliencyMap(Rect(x / scale, y / scale, patchSize / scale, patchSize / scale)) += saliencyValue;
+			std::cout << "Debug Message: This point is reached 6." << std::endl;
+
+		}
+		std::cout << "Debug Message: This point is reached 6.//////" << scale << std::endl;
+		break;
+	}
+
+	// Normalize the saliency map to the range [0, 1]
+	normalize(saliencyMap, saliencyMap, 0, 1, NORM_MINMAX);
+
+	return saliencyMap;
+}
+
+// Adjust saliency values based on distance to foci using Eq. (6)
+Mat adjustSaliencyByDistance(const Mat& saliencyMap, double distanceToFocus) {
+	Mat adjustedSaliency;
+
+	// Parameters for Eq. (6)
+	double threshold = 0.8; // You may adjust the threshold value
+
+	// Apply threshold to identify the most attended localized areas
+	Mat attendedAreas = (saliencyMap > threshold);
+
+	// Calculate the Euclidean distance to the closest attended pixel
+	distanceTransform(attendedAreas, adjustedSaliency, DIST_L2, DIST_MASK_PRECISE);
+
+	// Normalize adjustedSaliency to the range [0, 1]
+	normalize(adjustedSaliency, adjustedSaliency, 0, 1, NORM_MINMAX);
+
+	// Apply Eq. (6) to adjust saliency values
+	pow(saliencyMap, distanceToFocus, adjustedSaliency);
+	adjustedSaliency = adjustedSaliency.mul(1.0 - distanceToFocus);
+
+	return adjustedSaliency;
+}
+
+
+
+Mat contextAwareSaliencyDetection(const Mat& inputImage) {
+	Mat saliencyMap;
+
+	// Convert input image to grayscale
+	Mat grayImage;
+	cvtColor(inputImage, grayImage, COLOR_BGR2GRAY);
+
+	// Define parameters
+	int patchSize = 7;
+	std::vector<double> scales = { 1.0, 0.8, 0.5, 0.3 };
+	double focalThreshold = 0.8;
+	std::cout << "Dasda" << '\n';
+	// Iterate over scales
+	for (double scale : scales) {
+		// Resize the image
+		Mat resizedImage;
+		resize(grayImage, resizedImage, Size(), scale, scale);
+		std::cout << "Dasda" << '\n';
+		// Iterate over pixels
+		for (int i = patchSize / 2; i < resizedImage.rows - patchSize / 2; ++i) {
+			for (int j = patchSize / 2; j < resizedImage.cols - patchSize / 2; ++j) {
+				// Extract the patch centered at (i, j)
+				std::cout << "Dasda" << '\n';
+				Rect patchRect(j - patchSize / 2, i - patchSize / 2, patchSize, patchSize);
+				std::cout << "Dasda" << '\n';
+				Mat patch = resizedImage(patchRect);
+				std::cout << "Dasda" << '\n';
+
+				// Calculate brightness contrast
+				double brightnessContrast = calculateBrightnessContrast(patch);
+				std::cout << "Dasda" << '\n';
+				// Calculate orientation contrast using Gabor filters
+				Mat orientationContrast = calculateOrientationContrast(patch);
+				std::cout << "Debug Message: This point is reached." << std::endl;
+				// Calculate positional distance
+				double positionalDistance = calculatePositionalDistance(patchRect, patchRect);
+				std::cout << "Debug Message: This point is reached." << std::endl;
+				// Calculate distinctiveness measure using Eq. (2)
+				double distinctiveness = calculateDistinctiveness(brightnessContrast, orientationContrast, positionalDistance);
+				std::cout << "Debug Message: This point is reached." << std::endl;
+				std::cout << "#####################################################################" << std::endl;
+				// Perform multi-scale saliency detection using Eq. (4)
+				Mat multiScaleSaliency = multiScaleSaliencyDetection(patch, 5);  // You may adjust the parameter K
+				std::cout << "Debug Message: This point is reached." << std::endl;
+				// Adjust saliency values based on distance to foci using Eq. (6)
+				Mat adjustedSaliency = adjustSaliencyByDistance(multiScaleSaliency, positionalDistance);
+				std::cout << "Debug Message: This point is reached." << std::endl;
+				// Accumulate saliency values
+				saliencyMap += adjustedSaliency;
+			}
+		}
+	}
+
+	// Normalize the saliency map to the range [0, 1]
+	normalize(saliencyMap, saliencyMap, 0, 255, NORM_MINMAX);
+	std::cout << "Debug Message: This point is reached." << std::endl;
+
+	// Apply threshold to extract the most attended localized areas
+	cv::threshold(saliencyMap, saliencyMap, focalThreshold, 1.0, THRESH_BINARY);
+
+	return saliencyMap;
+}
+
+
+
+void Test1() {
+
 	char fname[MAX_PATH];
 	if (openFileDlg(fname)) {
-		Mat src = imread(fname, IMREAD_GRAYSCALE);
-		Mat dst = src.clone();
 
-		GaussianBlur(src, src, Size(5, 5), 0);
-		imshow("Gausian", src);
+		Mat src;
+		src = imread(fname);
 
-
-		Mat binaryImage;
-		threshold(src, binaryImage, 40, 255, THRESH_OTSU);
-		imshow("THRESH_BINARY_INV", src);
-
-		Mat morphKernel = getStructuringElement(MORPH_RECT, Size(3, 3));
-		morphologyEx(binaryImage, binaryImage, MORPH_CLOSE, morphKernel);
-		imshow("morphologyEx", src);
-
-		std::vector<std::vector<Point>> contours;
-		findContours(binaryImage, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
-		Mat s2 = dst.clone();
-		drawContours(s2, contours, -1, Scalar(0, 255, 0), 2);
-		imshow("Original Image", dst);
-		imshow("Result Image", src);
-		imshow("Result Image2", s2);
-		waitKey(0);
+		Mat dst = contextAwareSaliencyDetection(src);
+		imshow("Dasd", dst);
+		waitKey();
 	}
 }
+
 
 
 
