@@ -211,14 +211,15 @@ cv::Mat keepEdgeVesselsv2(const cv::Mat& src) {
 		}
 
 		// If it starts from the edge and is large enough, draw it on the result image
-		if (startsFromEdge && cv::contourArea(contours[i]) > 100) { // Threshold for "large" is set to 100 here
+		if (startsFromEdge && cv::contourArea(contours[i]) > 60) { // Threshold for "large" is set to 100 here
 			cv::drawContours(edgeVessels, contours, static_cast<int>(i), cv::Scalar(255), cv::FILLED);
 		}
 	}
 
 	// Dilate the result to include contours that are within 2 pixels of the edge vessels
 	cv::Mat dilatedEdgeVessels;
-	cv::dilate(edgeVessels, dilatedEdgeVessels, cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(7, 7)));
+	cv::dilate(edgeVessels, dilatedEdgeVessels, cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(10, 10)));
+	cv::dilate(dilatedEdgeVessels, dilatedEdgeVessels, cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(10, 10)));
 
 	// Use the dilated image as a mask to include original contours that are close to the edge vessels
 	cv::Mat finalVessels;
@@ -237,8 +238,10 @@ void chat() {
 		cv::Mat retina= imread(fname);
 		Mat src = retina.clone();
 		Mat src3 = retina.clone();
+		Mat src4 = retina.clone();
 		cv::cvtColor(src, src, cv::COLOR_BGR2GRAY);
 		cv::cvtColor(src3, src3, cv::COLOR_BGR2GRAY);
+		cv::cvtColor(src4, src4, cv::COLOR_BGR2GRAY);
 		// Preprocess the image
 		cv::Mat preprocessed = preprocess(retina);
 		imshow("preprocessed", preprocessed);
@@ -285,8 +288,21 @@ void chat() {
 		imshow("out", src);
 		imshow("out2", src3);
 		Mat l= keepEdgeVesselsv2(largeVessels);
+		for (int i = 0; i < largeVessels.rows; i++)
+			for (int j = 0; j < largeVessels.cols; j++) {
+				if (l.at<uchar>(i, j) == 255)
+					src4.at<uchar>(i, j) = 0;
+			
+
+			}
+		imshow("out3", src4);
+		Mat doamneAjuta = src4.clone();
+		GaussianBlur(src4, doamneAjuta, Size(5, 5), 0.8, 0.8);
+		imshow("doamneAjuta", doamneAjuta);
+
 		imshow("inv", l);
 		imshow("notinv", l1);
+
 		waitKey();
 
 	}
