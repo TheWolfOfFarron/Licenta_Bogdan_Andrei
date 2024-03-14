@@ -4,6 +4,8 @@
 #include "stdafx.h"
 #include "common.h"
 #include <opencv2/core/utils/logger.hpp>
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/imgproc.hpp>
 
 wchar_t* projectPath;
 
@@ -100,7 +102,7 @@ void prepoc(Mat img) {
 
 	imshow("min dilate", min);
 
-	waitKey();
+	//waitKey();
 }
 
 void Test1() {
@@ -111,8 +113,6 @@ void Test1() {
 		Mat src;
 		src = imread(fname);
 
-	//	Mat dst = contextAwareSaliencyDetection(src);
-	//	imshow("Dasd", dst);
 		waitKey();
 	}
 }
@@ -137,26 +137,23 @@ cv::Mat preprocess(const cv::Mat& src) {
 cv::Mat enhanceVessels(const cv::Mat& src) {
 	cv::Mat enhanced;
 	// Here we use a combination of median filter and adaptive histogram equalization (CLAHE)
-	cv::medianBlur(src, enhanced, 7); // Apply median filter to remove noise
+	cv::medianBlur(src, enhanced, 7); 
 	cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE();
 	clahe->setClipLimit(4);
 	clahe->apply(enhanced, enhanced); // Enhance contrast
 	return enhanced;
 }
 
-// Function to extract vessels
+
 cv::Mat extractVessels(const cv::Mat& src) {
 	cv::Mat vessels;
-	// Instead of Canny, we could try adaptive thresholding which might be better at picking up vessels
 	cv::adaptiveThreshold(src, vessels, 255, cv::ADAPTIVE_THRESH_GAUSSIAN_C,
 		cv::THRESH_BINARY_INV, 11, 2);
 	return vessels;
 }
 
-// Function to remove small structures and keep large vessels
 cv::Mat keepLargeStructures(const cv::Mat& src) {
 	cv::Mat largeVessels;
-	// Use morphological closing to keep large structures
 	cv::Mat kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(3, 3));
 	cv::morphologyEx(src, largeVessels, cv::MORPH_CLOSE, kernel);
 	return largeVessels;
@@ -169,13 +166,10 @@ cv::Mat keepEdgeVessels(const cv::Mat& src) {
 
 	cv::Mat edgeVessels = cv::Mat::zeros(src.size(), CV_8UC1);
 
-	// Loop over the contours
 	for (size_t i = 0; i < contours.size(); i++) {
-		// Approximate the contour to a polygon
 		std::vector<cv::Point> polygon;
 		cv::approxPolyDP(contours[i], polygon, 1.0, true);
 
-		// Check if the contour starts from the edge of the image
 		bool startsFromEdge = false;
 		for (const cv::Point& pt : polygon) {
 			if (pt.x == 0 || pt.y == 0 || pt.x == src.cols - 1 || pt.y == src.rows - 1) {
@@ -184,7 +178,6 @@ cv::Mat keepEdgeVessels(const cv::Mat& src) {
 			}
 		}
 
-		// If it starts from the edge and is large enough, draw it on the result image
 		if (startsFromEdge && cv::contourArea(contours[i]) > 100) { // Threshold for "large" is set to 100 here
 			cv::drawContours(edgeVessels, contours, static_cast<int>(i), cv::Scalar(255), cv::FILLED);
 		}
@@ -199,9 +192,7 @@ cv::Mat keepEdgeVesselsv2(const cv::Mat& src) {
 
 	cv::Mat edgeVessels = cv::Mat::zeros(src.size(), CV_8UC1);
 
-	// Loop over the contours to find edge vessels
 	for (size_t i = 0; i < contours.size(); i++) {
-		// Check if the contour starts from the edge of the image
 		bool startsFromEdge = false;
 		for (const cv::Point& pt : contours[i]) {
 			if (pt.x <= 1 || pt.y <= 1 || pt.x >= src.cols - 2 || pt.y >= src.rows - 2) {
@@ -210,13 +201,11 @@ cv::Mat keepEdgeVesselsv2(const cv::Mat& src) {
 			}
 		}
 
-		// If it starts from the edge and is large enough, draw it on the result image
 		if (startsFromEdge && cv::contourArea(contours[i]) > 60) { // Threshold for "large" is set to 100 here
 			cv::drawContours(edgeVessels, contours, static_cast<int>(i), cv::Scalar(255), cv::FILLED);
 		}
 	}
 
-	// Dilate the result to include contours that are within 2 pixels of the edge vessels
 	cv::Mat dilatedEdgeVessels;
 	cv::dilate(edgeVessels, dilatedEdgeVessels, cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(10, 10)));
 	cv::dilate(dilatedEdgeVessels, dilatedEdgeVessels, cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(10, 10)));
@@ -228,9 +217,157 @@ cv::Mat keepEdgeVesselsv2(const cv::Mat& src) {
 	return finalVessels;
 }
 
+Mat contrast(const Mat grayImage) {
 
 
-void chat() {
+
+	double meanIntensity = cv::mean(grayImage)[0];
+
+	double alpha = 2.0;  // You can adjust this value to control contrast
+	cv::Mat contrastImage = grayImage.clone();
+	contrastImage = alpha * (contrastImage - meanIntensity) + meanIntensity;
+
+
+	return  contrastImage;
+}
+
+Mat removeSmallComponentsNoise(const Mat src) {
+	std::vector<std::vector<cv::Point>> contours;
+	cv::findContours(src.clone(), contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+
+	cv::Mat edgeVessels = cv::Mat::zeros(src.size(), CV_8UC1);
+
+
+	for (size_t i = 0; i < contours.size(); i++) {
+		if (cv::contourArea(contours[i]) > 60) { // Threshold for "large" is set to 100 here
+			cv::drawContours(edgeVessels, contours, static_cast<int>(i), cv::Scalar(255), cv::FILLED);
+		}
+	}
+
+	return edgeVessels;
+
+}
+
+
+void Classificare1(const Mat src, const Mat binarexit) {
+	//statista/bayes... lab 5 srf  cu histrograma simpla
+
+	imshow("src1wq", src);
+	imshow("RIP!", binarexit);
+
+	std::vector<float> u;
+	std::vector<float> o;
+	std::vector<float> fc;
+	std::vector<float> fc1;
+	std::vector<Mat> patches;
+	std::vector<Mat> whitePatches;
+
+	std::vector<Mat> histos;
+	std::vector<Mat> histosW;
+
+	int indexx = 0;
+	int indexy = 0;
+
+
+
+
+	float** covariatie = (float**)calloc(19 * 19, sizeof(float*));
+	float** corelatie = (float**)calloc(19 * 19, sizeof(float*));
+
+	for (int i = 0; i < 19 * 19; i++)
+	{
+		covariatie[i] = (float*)calloc(19 * 19, sizeof(float));
+		corelatie[i] = (float*)calloc(19 * 19, sizeof(float));
+	}
+
+	
+
+	for(int i=0;i<16;i++)
+		for (int j = 0; j < 16; j++) {
+			Mat patchesAux = Mat(19, 19, CV_8UC1);
+			Mat whitePatchesAux = Mat(19, 19, CV_8UC1);
+			int ok = 1;
+			for (int l = 0; l < 19; l++)
+			{
+				for (int k = 0; k < 19; k++) {
+
+					if (binarexit.at<uchar>(19 * i + l, 19 * j + k) == 255) {
+						ok = 0;
+					
+					}
+
+					patchesAux.at<uchar>(l, k) = src.at<uchar>(19 * i + l, 19 * j + k);
+					whitePatchesAux.at<uchar>(l, k) = src.at<uchar>(19 * i + l, 19 * j + k);
+				}
+			
+
+			}
+			if (ok == 1) {
+				patches.push_back(patchesAux);
+				
+			}
+			else
+			{
+				whitePatches.push_back(whitePatchesAux);
+			}
+		}
+
+
+	int channels[] = { 0 }; // Histogram is computed from the grayscale image
+	int histSize[] = { 256 }; // Number of bins
+	float range[] = { 0, 256 }; // Range of pixel values
+	const float* ranges[] = { range };
+
+	for (const auto& img: patches ) {
+		Mat hist;
+		 calcHist(&img, 1, channels, Mat(), hist, 1, histSize, ranges);
+		 histos.push_back(hist);
+	}
+
+
+	for (const auto& img : whitePatches) {
+		Mat hist;
+		calcHist(&img, 1, channels, Mat(), hist, 1, histSize, ranges);
+		histosW.push_back(hist);
+	}
+
+	Mat white_image(1, 1, CV_8UC1, Scalar(255));
+	Mat white_hist;
+	calcHist(&white_image, 1, channels, Mat(), white_hist, 1, histSize, ranges);
+	
+	for (int j = 0; j < histosW.size(); j++) {
+		double min_distance = INT_MAX;
+		int predicted_class = -1;
+
+		for (int i = 0; i < histos.size(); ++i) {
+			double dist = compareHist(histos[i], histosW[j], HISTCMP_BHATTACHARYYA);
+			if (dist < min_distance) {
+				min_distance = dist;
+				predicted_class = 1;
+			}
+		}
+		double dist = compareHist(white_hist, histosW[j], HISTCMP_BHATTACHARYYA);
+		if (dist < min_distance) {
+			predicted_class = 0;
+		}
+
+		std::cout << "whitepach " << j << "  " << predicted_class << '\n';
+		if (predicted_class == 0) {
+			imshow("whitepach " + j, whitePatches[j]);
+		}
+	}
+		
+
+
+
+
+	
+
+
+}
+
+
+void v2() {
 	char fname[MAX_PATH];
 	if (openFileDlg(fname)) {
 
@@ -239,22 +376,21 @@ void chat() {
 		Mat src = retina.clone();
 		Mat src3 = retina.clone();
 		Mat src4 = retina.clone();
+		Mat retine = retina.clone();
 		cv::cvtColor(src, src, cv::COLOR_BGR2GRAY);
+		cv::cvtColor(retine, retine, cv::COLOR_BGR2GRAY);
 		cv::cvtColor(src3, src3, cv::COLOR_BGR2GRAY);
 		cv::cvtColor(src4, src4, cv::COLOR_BGR2GRAY);
-		// Preprocess the image
 		cv::Mat preprocessed = preprocess(retina);
-		imshow("preprocessed", preprocessed);
+		//imshow("preprocessed", preprocessed);
 
-		// Enhance vessels
 		cv::Mat enhanced = enhanceVessels(preprocessed);
-		imshow("enhanced", enhanced);
+		//imshow("enhanced", enhanced);
 
-		// Extract vessels
+		
 		cv::Mat vessels = extractVessels(enhanced);
-		imshow("vessels", vessels);
+		//imshow("vessels", vessels);
 
-		// Keep only large structures
 		cv::Mat largeVessels = keepLargeStructures(vessels);
 
 
@@ -263,6 +399,8 @@ void chat() {
 				if (vessels.at<uchar>(i, j) == 0)
 					src.at<uchar>(i, j) = 0;
 			}
+
+		std::cout << "ce?\n";
 
 		openFileDlg(fname);
 		 
@@ -274,7 +412,7 @@ void chat() {
 			}
 		Mat l1 = keepEdgeVessels(largeVessels);
 
-		imshow("largeVessels", largeVessels);
+		//imshow("largeVessels", largeVessels);
 		for (int i = 0; i < largeVessels.rows; i++)
 			for (int j = 0; j < largeVessels.cols; j++) {
 				if (largeVessels.at<uchar>(i, j) == 255)
@@ -283,10 +421,10 @@ void chat() {
 					largeVessels.at<uchar>(i, j) = 255;
 
 			}
-		imshow("invlargeVessels", largeVessels);
+		//imshow("invlargeVessels", largeVessels);
 
-		imshow("out", src);
-		imshow("out2", src3);
+		//imshow("out", src);
+		//imshow("out2", src3);
 		Mat l= keepEdgeVesselsv2(largeVessels);
 		for (int i = 0; i < largeVessels.rows; i++)
 			for (int j = 0; j < largeVessels.cols; j++) {
@@ -295,13 +433,55 @@ void chat() {
 			
 
 			}
-		imshow("out3", src4);
+		//imshow("out3", src4);
 		Mat doamneAjuta = src4.clone();
 		GaussianBlur(src4, doamneAjuta, Size(5, 5), 0.8, 0.8);
 		imshow("doamneAjuta", doamneAjuta);
 
-		imshow("inv", l);
-		imshow("notinv", l1);
+		//imshow("inv", l);
+		//imshow("notinv", l1);
+		Mat contrasts = contrast(doamneAjuta);
+		//imshow("contrast", contrasts);
+		Mat thresholded= contrasts.clone();
+		
+
+
+		for (int i = 0; i < contrasts.rows; i++)
+			for (int j = 0; j < contrasts.cols; j++) {
+				if (contrasts.at<uchar>(i, j) >170)
+					thresholded.at<uchar>(i, j) = 255;
+				else
+					thresholded.at<uchar>(i, j) = 0;
+
+			}
+
+		//imshow("thresholded", thresholded);
+
+		Mat important = thresholded.clone();
+
+		important= removeSmallComponentsNoise(thresholded);
+
+		//imshow("RIP", important);
+		
+
+		std::cout << "rows: " << src.rows << "  cols " << src.cols<<'\n';
+
+		//DEBUG 
+
+		Mat textured = retine.clone();
+		for(int i=0;i< retine.rows;i++)
+			for (int j = 0; j < retine.cols; j++)
+			{
+				if (important.at<uchar>(i, j) == 255) {
+					textured.at<uchar>(i, j) = retine.at<uchar>(i, j);
+				}
+				else
+					textured.at<uchar>(i, j) = 0;
+			}
+		imshow("Textured", textured);
+
+
+		Classificare1(retine, important);
 
 		waitKey();
 
@@ -800,7 +980,7 @@ int main()
 					prepoc(src);
 				}
 			case 14: 
-				chat();
+				v2();
 				break;
 		}
 	}
