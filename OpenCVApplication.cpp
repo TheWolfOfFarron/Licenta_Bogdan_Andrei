@@ -6,12 +6,25 @@
 #include <opencv2/core/utils/logger.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
+#include <limits.h>
+#include <vector>
+#include <cmath>
+#include <algorithm>
+#include <random>
+#include <limits>
+
+
+
 
 wchar_t* projectPath;
 
 
 
-
+/*
+TO DO 
+calculeaza cel mai apropiat punct de centru 
+salveaza countour ca si copie si afiseazo dupa
+*/
 
 
 
@@ -248,6 +261,21 @@ Mat removeSmallComponentsNoise(const Mat src,int size) {
 
 }
 
+std::vector<Mat> getRegions(const Mat src, const Mat graySrc) {
+	std::vector<Mat> ret;
+	std::vector<std::vector<Point>> contours;
+
+	findContours(src, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
+	// Draw bounding boxes for each contour
+	for (size_t i = 0; i < contours.size(); ++i) {
+		// Get bounding box
+		cv::Rect boundingBox = cv::boundingRect(contours[i]);
+
+		// Extract region
+		ret.push_back(graySrc(boundingBox));
+	}
+	return ret;
+}
 
 Mat putBoxes(const Mat src) {
 	std::vector<std::vector<Point>> contours;
@@ -258,7 +286,7 @@ Mat putBoxes(const Mat src) {
 	for (size_t i = 0; i < contours.size(); i++) {
 		// Get the bounding rectangle of a contour
 		Rect boundingRect = cv::boundingRect(contours[i]);
-
+	
 		// Draw the bounding rectangle on the original image
 		rectangle(image, boundingRect, Scalar(255, 255, 255), 1);
 	}
@@ -391,6 +419,44 @@ void Classificare1(const Mat src, const Mat binarexit) {
 
 
 
+Mat deteleLines(Mat src) {
+
+	Mat image=src.clone();
+	// Find contours in the binary image
+	std::vector<std::vector<Point>> contours;
+	findContours(src, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
+
+	// Iterate through the contours and remove the ones that resemble lines
+	for (size_t i = 0; i < contours.size(); ++i) {
+		// If the contour has very few vertices and a large aspect ratio, remove it
+		if (contours[i].size() < 10) {
+			Rect boundingRect = cv::boundingRect(contours[i]);
+			float aspectRatio = static_cast<float>(boundingRect.width) / boundingRect.height;
+			if (aspectRatio > 5) {  // Adjust this threshold based on your specific case
+				// Fill the contour area with black color
+				drawContours(image, contours, static_cast<int>(i), Scalar(0, 0, 0), FILLED);
+			}
+		}
+	}
+	return image;
+	
+}
+
+std::vector<Mat> resizeVector(const std::vector<Mat> s) {
+	std::vector<Mat> ret;
+	for (int i = 0; i < s.size(); i++) {
+		Mat aux;
+		Size newSize(100, 100);
+		resize(s[i], aux, newSize);
+
+		// Convert pixel values to range [0, 1]
+		aux.convertTo(aux, CV_32F, 1.0 / 255.0);
+		ret.push_back(aux);
+	}
+
+	return ret;
+}
+
 
 void v2() {
 	char fname[MAX_PATH];
@@ -446,10 +512,10 @@ void v2() {
 					largeVessels.at<uchar>(i, j) = 255;
 
 			}
-		//imshow("invlargeVessels", largeVessels);
+		imshow("invlargeVessels", largeVessels);
 
 		//imshow("out", src);
-		//imshow("out2", src3);
+		imshow("out2", src3);
 		Mat l= keepEdgeVesselsv2(largeVessels);
 		for (int i = 0; i < largeVessels.rows; i++)
 			for (int j = 0; j < largeVessels.cols; j++) {
@@ -465,7 +531,7 @@ void v2() {
 
 		//imshow("inv", l);
 		//imshow("notinv", l1);
-		Mat contrasts = contrast(doamneAjuta,1.75); //inainte 2.0
+		Mat contrasts = contrast(doamneAjuta,1.5); //inainte 2.0
 		//imshow("contrast", contrasts);
 		Mat thresholded= contrasts.clone();
 		
@@ -488,7 +554,7 @@ void v2() {
 
 		Mat important = thresholded.clone();
 
-		important= removeSmallComponentsNoise(thresholded,60);
+		important= removeSmallComponentsNoise(thresholded,100);
 
 		imshow("RIP", important);
 		
@@ -516,7 +582,7 @@ void v2() {
 		 contrasts = contrast(textured,2.0);
 		imshow("contrast", contrasts);
 
-		contrasts = removeSmallComponentsNoise(contrasts, 75);
+		contrasts = removeSmallComponentsNoise(contrasts, 100);
 
 		Mat boxes = putBoxes(important);
 		imshow("boxeex", boxes);
@@ -532,13 +598,368 @@ void v2() {
 			}
 		imshow("retrashold", thresholded);
 
-		Classificare1(retine, important);
+	//	Classificare1(retine, important);
+		//Mat s = deteleLines(thresholded);
+		//imshow("retarded", s);
+
+		std::vector<Mat> SmallPaches = getRegions(boxes, retine);
+		std::vector<Mat> ReSmallPaches = resizeVector(SmallPaches);
+		SmallPaches.clear();
+		
+
 
 		waitKey();
 
 	}
 }
 
+
+/*
+std::vector<std::vector<cv::Point>> filterContours(const cv::Mat& src) {
+	std::vector<std::vector<cv::Point>> contours;
+	cv::findContours(src.clone(), contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+
+	cv::Point center(src.cols / 2, src.rows / 2);
+	double minDist = 1e6; // A large value to initialize the minimum distance
+	int closestContourIdx = -1;
+
+	// First, find the closest contour that starts from the edge
+	for (size_t i = 0; i < contours.size(); i++) {
+		for (const cv::Point& pt : contours[i]) {
+			if (pt.x <= 10 || pt.y <= 10 || pt.x >= src.cols - 11 || pt.y >= src.rows - 11) {
+				double dist = cv::norm(pt - center);
+				if (dist < minDist) {
+					minDist = dist;
+					closestContourIdx = i;
+				}
+				break;
+			}
+		}
+	}
+
+	std::vector<std::vector<cv::Point>> filteredContours;
+	for (size_t i = 0; i < contours.size(); i++) {
+		if (static_cast<int>(i) != closestContourIdx) {
+			filteredContours.push_back(contours[i]);
+		}
+	}
+
+	return filteredContours;
+}
+*/
+
+
+double distance(const Point& a, const Point& b) {
+	return sqrt(pow(a.x - b.x, 2) + pow(a.y - b.y, 2));
+}
+
+Mat processContours(const Mat& src, double areaThreshold) {
+	std::vector<std::vector<Point>> contours;
+	findContours(src.clone(), contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
+
+	Mat edgeVessels = Mat::zeros(src.size(), CV_8UC1);
+
+	Point imageCenter(src.cols / 2, src.rows / 2);
+	int closestContourIndex = -1;
+	double minDistanceToCenter = 1e+10;
+
+	for (size_t i = 0; i < contours.size(); i++) {
+		Moments mu = moments(contours[i]);
+		if (mu.m00 == 0) continue; // Prevent division by zero
+		Point2f centroid(mu.m10 / mu.m00, mu.m01 / mu.m00);
+		bool startsFromEdge = false;
+		for (const Point& pt : contours[i]) {
+			if (pt.x <= 1 || pt.y <= 1 || pt.x >= src.cols - 2 || pt.y >= src.rows - 2) {
+				startsFromEdge = true;
+			}
+
+		}
+		double dist = distance(imageCenter, centroid);
+		if (dist < minDistanceToCenter && startsFromEdge) {
+			minDistanceToCenter = dist;
+			closestContourIndex = static_cast<int>(i);
+		}
+	}
+
+	for (size_t i = 0; i < contours.size(); i++) {
+		bool startsFromEdge = false;
+		for (const Point& pt : contours[i]) {
+			if (pt.x <= 1 || pt.y <= 1 || pt.x >= src.cols - 2 || pt.y >= src.rows - 2) {
+				startsFromEdge = true;
+				break;
+			}
+		}
+
+		if (startsFromEdge && static_cast<int>(i) == closestContourIndex && contourArea(contours[i]) > areaThreshold) {
+			drawContours(edgeVessels, contours, static_cast<int>(i), Scalar(255), FILLED);
+		}
+		else {
+			if (!startsFromEdge  && contourArea(contours[i]) > areaThreshold) {
+				drawContours(edgeVessels, contours, static_cast<int>(i), Scalar(255), FILLED);
+			}
+		}
+	}
+
+	return edgeVessels;
+}
+
+
+cv::Point2f computeCentroid(const std::vector<cv::Point>& contour) {
+	cv::Moments m = cv::moments(contour, false);
+	return cv::Point2f(m.m10 / m.m00, m.m01 / m.m00);
+}
+
+std::vector<std::vector<cv::Point>> mergeCloseContours(const std::vector<std::vector<cv::Point>>& contours, float threshold) {
+	std::vector<std::vector<cv::Point>> mergedContours;
+	std::vector<bool> merged(contours.size(), false);
+
+	for (size_t i = 0; i < contours.size(); ++i) {
+		if (merged[i]) continue;
+
+		cv::Point2f centroid_i = computeCentroid(contours[i]);
+		for (size_t j = i + 1; j < contours.size(); ++j) {
+			if (merged[j]) continue;
+
+			cv::Point2f centroid_j = computeCentroid(contours[j]);
+			if (cv::norm(centroid_i - centroid_j) < threshold) {
+				// Merge contours[i] and contours[j]
+				std::vector<cv::Point> mergedContour;
+				mergedContour.insert(mergedContour.end(), contours[i].begin(), contours[i].end());
+				mergedContour.insert(mergedContour.end(), contours[j].begin(), contours[j].end());
+				mergedContours.push_back(mergedContour);
+
+				merged[i] = merged[j] = true;
+				break; // only merging with one nearest contour
+			}
+		}
+
+		if (!merged[i]) {
+			mergedContours.push_back(contours[i]);
+		}
+	}
+
+	return mergedContours;
+}
+
+
+
+
+std::vector<cv::Point2d> mergeCloseContours(const std::vector<std::vector<cv::Point>>& contours, double mergeDistance) {
+	std::vector<cv::Point2d> centroids;
+	for (const auto& contour : contours) {
+		cv::Point2d centroid = computeCentroid(contour);
+		if (centroid.x != -1 && centroid.y != -1) { 
+			centroids.push_back(centroid);
+		}
+	}
+
+	std::vector<bool> merged(centroids.size(), false);
+	std::vector<cv::Point2d> mergedCentroids;
+
+	for (size_t i = 0; i < centroids.size(); i++) {
+		if (!merged[i]) {
+			cv::Point2d mergedCentroid = centroids[i];
+			int mergeCount = 1;
+			for (size_t j = i + 1; j < centroids.size(); j++) {
+				if (!merged[j] && cv::norm(centroids[i] - centroids[j]) < mergeDistance) {
+					mergedCentroid.x += centroids[j].x;
+					mergedCentroid.y += centroids[j].y;
+					mergeCount++;
+					merged[j] = true;
+				}
+			}
+			mergedCentroid.x /= mergeCount;
+			mergedCentroid.y /= mergeCount;
+			mergedCentroids.push_back(mergedCentroid);
+		}
+	}
+
+	std::cout << "Original centroids: " << centroids.size() << ", Merged centroids: " << mergedCentroids.size() << std::endl;
+	
+	return mergedCentroids;
+}
+// Main k-means clustering function
+std::vector<int> clusterContours(const std::vector<std::vector<cv::Point>>& contours, int k, double mergeDistance) {
+	std::vector<cv::Point2d> mergedCentroids = mergeCloseContours(contours, mergeDistance);
+	if (mergedCentroids.empty()) {
+		std::cerr << "No centroids to cluster" << std::endl;
+		std::vector<int> s;
+		return s;
+	}
+	// Convert to Mat for k-means
+	cv::Mat data(mergedCentroids.size(), 2, CV_32F);
+	for (size_t i = 0; i < mergedCentroids.size(); i++) {
+		data.at<float>(i, 0) = static_cast<float>(mergedCentroids[i].x);
+		data.at<float>(i, 1) = static_cast<float>(mergedCentroids[i].y);
+	}
+
+	cv::Mat labels, centers;
+
+	if (static_cast<int>(mergedCentroids.size()) > 3)
+		k = 3;
+	else
+		k = static_cast<int>(mergedCentroids.size());
+	
+	cv::kmeans(data, k, labels, cv::TermCriteria(cv::TermCriteria::EPS + cv::TermCriteria::MAX_ITER, 10, 1.0), 3, cv::KMEANS_PP_CENTERS, centers);
+	std::vector<int> clusterLabels(labels.rows);
+	labels.row(0).copyTo(clusterLabels);
+
+	return clusterLabels;
+}
+
+
+std::vector<std::vector<cv::Point>> mergeContours(const std::vector<std::vector<cv::Point>>& contours, double threshold) {
+	std::vector<cv::Point> centroids;
+
+	for (const auto& contour : contours) {
+		cv::Moments m = cv::moments(contour);
+		centroids.push_back(cv::Point(static_cast<int>(m.m10 / m.m00), static_cast<int>(m.m01 / m.m00)));
+	}
+
+	std::vector<bool> merged(contours.size(), false);
+	std::vector<std::vector<cv::Point>> newContours;
+
+	for (size_t i = 0; i < contours.size(); ++i) {
+		if (!merged[i]) {
+			cv::Rect boundingBox = cv::boundingRect(contours[i]);
+
+			for (size_t j = i + 1; j < contours.size(); ++j) {
+				if (!merged[j] && distance(centroids[i], centroids[j]) < threshold) {
+					boundingBox |= cv::boundingRect(contours[j]); 
+					merged[j] = true;
+				}
+			}
+
+			std::vector<cv::Point> newContour;
+			newContour.push_back(boundingBox.tl());
+			newContour.push_back(cv::Point(boundingBox.x + boundingBox.width, boundingBox.y));
+			newContour.push_back(boundingBox.br());
+			newContour.push_back(cv::Point(boundingBox.x, boundingBox.y + boundingBox.height));
+			newContours.push_back(newContour);
+			merged[i] = true;
+		}
+	}
+
+	return newContours;
+}
+
+
+
+void v3() {
+	char fname[MAX_PATH];
+	while (openFileDlg(fname)) {
+		cv::Mat retina = imread(fname,IMREAD_GRAYSCALE);
+		imshow("retina", retina);
+
+		Mat binaryImage;
+
+		cv::threshold(retina, binaryImage, 128, 255, THRESH_BINARY);
+		imshow("enchanced", binaryImage);
+		Mat out2 = removeSmallComponentsNoise(binaryImage,100);
+		imshow("out2", out2);
+
+
+
+		double areaThreshold = 60.0;
+		Mat result = processContours(out2, areaThreshold);
+		cv::imshow("Edge result", result);
+
+		//std::vector<std::vector<cv::Point>> filteredContours = filterContours(out2);
+
+		//// Draw the filtered contours
+		//cv::Mat edgeVessels = cv::Mat::zeros(out2.size(), CV_8UC1);
+		//for (size_t i = 0; i < filteredContours.size(); i++) {
+		//	cv::drawContours(edgeVessels, filteredContours, static_cast<int>(i), cv::Scalar(255), cv::FILLED);
+		//}
+
+		//cv::imshow("Edge Vessels", edgeVessels);
+
+			// Extract contours from the binary image
+		std::vector<std::vector<cv::Point>> contours;
+		cv::findContours(result, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+
+		// Set the number of clusters and the merge distance
+		int k = 2; // For example, you want to cluster into 3 groups
+		double mergeDistance = 75.0;
+
+		// Perform clustering on the contours
+		std::vector<int> clusterLabels = clusterContours(contours, k, mergeDistance);
+		std::vector<std::vector<cv::Point>> mergedContours = mergeContours(contours, mergeDistance);
+		std::cout << clusterLabels.size() << "\n";
+
+		//DEBUG S
+
+		std::default_random_engine gen;
+		std::uniform_int_distribution<int>	d(0, 255);
+
+
+		std::vector<cv::Scalar> colors;
+		std::random_device rd;
+		std::mt19937 rng(rd());
+		std::uniform_int_distribution<int> uni(0, 255);
+		for (int i = 0; i < k; ++i) {
+			colors.push_back(cv::Scalar(uni(rng), uni(rng), uni(rng)));
+		}
+
+		// Create an output image
+		cv::Mat outputImage = cv::Mat::zeros(retina.size(), CV_8UC3);
+		std::cout << "trece";
+		// Draw the contours wi th the cluster-specific random colors
+		std::vector<Vec3b> colorss;
+
+		for (size_t i = 0; i < mergedContours.size(); i++) {
+			
+			int randint = d(gen);
+			Vec3b color = Vec3b(d(gen), d(gen), d(gen));
+			colorss.push_back(color);
+			cv::drawContours(outputImage, mergedContours, i, color, cv::FILLED);
+			//cv::drawContours(outputImage, mergedContours, i, colors[clusterLabels[i]], cv::FILLED);
+
+		}
+		std::cout << "trece";
+		cv::imshow("Clusters", outputImage);
+
+
+
+		//DEBUG E
+
+
+
+		//Score S
+
+		openFileDlg(fname);
+		cv::Mat mask = imread(fname, IMREAD_GRAYSCALE);
+
+
+		cv::Mat outputImage2 = cv::Mat::zeros(retina.size(), CV_8UC3);
+
+		float totalpoints = 0.0f;
+		float points = 0.0f;
+		float score = 0.0f;
+		for (int i = 0; i < retina.rows; i++) {
+			for (int j = 0; j < retina.cols; j++) {
+				if (result.at<uchar>(i, j) == 255 && mask.at<uchar>(i, j) == 255) {
+					outputImage2.at<Vec3b>(i, j) = Vec3b(255, 0, 0);
+					points++;
+				}
+				if (mask.at<uchar>(i, j) == 255) {
+					totalpoints++;
+				}
+			}
+		}
+
+		if (points != 0)
+			score = points*100/ totalpoints ;
+		imshow("score", outputImage2);
+		std::cout << "score: " << score << "\n";
+
+		//Score E
+
+
+		waitKey();
+	}
+
+}
 
 
 int main() 
@@ -555,6 +976,7 @@ int main()
 		std::cout << "13: v1 paper try \n";
 		std::cout << "14: v2 algorithm  \n";
 		std::cout << "15: test more img v2 \n";
+		std::cout << "16: v3 anoimizate \n";
 
 
 		scanf("%d",&op);
@@ -577,6 +999,9 @@ int main()
 					v2();
 				}
 				break;
+
+			case 16:
+				v3();
 		}
 	}
 	while (op!=0);
