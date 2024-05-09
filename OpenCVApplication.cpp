@@ -1,4 +1,4 @@
-// OpenCVApplication.cpp : Defines the entry point for the console application.
+﻿// OpenCVApplication.cpp : Defines the entry point for the console application.
 //
 
 #include "stdafx.h"
@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <random>
 #include <limits>
+#include <stack>
 
 
 
@@ -65,30 +66,7 @@ Mat vascularSeg(Mat img) {
 
 
 
-Mat minus(Mat img,Mat img2) {
 
-	imshow("wtf", img);
-
-	/*for(int i=0;i<img.rows;i++)
-		for (int j = 0; j < img.cols; j++)
-		{
-
-			if (img2.at<uchar>(i, j)==255) {
-				if (i >= 1 && i < img.rows - 1 && j >= 1 && j < img.cols - 1) {
-					img.at<uchar>(i, j) =( img.at<uchar>(i-1, j-1)+ img.at<uchar>(i-1, j)+ img.at<uchar>(i-1, j+1)+
-						img.at<uchar>(i, j-1)+ img.at<uchar>(i, j+1)+
-						img.at<uchar>(i+1, j-1)+ img.at<uchar>(i+1, j)+ img.at<uchar>(i+1, j-1))/8;
-				}
-				else
-				{
-					img.at<uchar>(i, j) = 0;
-				}
-			}
-		}*/
-	imshow("wtf2", img);
-	return img;
-
-}
 
 void prepoc(Mat img) {
 	Mat minm = img.clone();
@@ -106,7 +84,7 @@ void prepoc(Mat img) {
 	imshow("filteredImage", filteredImage);
 
 
-	minus(minm, ves);
+
 	imshow("min", min);
 	cv::Mat element = cv::getStructuringElement(cv::MORPH_CROSS, cv::Size(3, 3));
 
@@ -118,17 +96,7 @@ void prepoc(Mat img) {
 	//waitKey();
 }
 
-void Test1() {
 
-	char fname[MAX_PATH];
-	if (openFileDlg(fname)) {
-
-		Mat src;
-		src = imread(fname);
-
-		waitKey();
-	}
-}
 
 cv::Mat removeSmallStructures(const cv::Mat& src, int size) {
 	cv::Mat se = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(size, size));
@@ -315,9 +283,6 @@ void Classificare1(const Mat src, const Mat binarexit) {
 	int indexx = 0;
 	int indexy = 0;
 
-
-
-
 	float** covariatie = (float**)calloc(19 * 19, sizeof(float*));
 	float** corelatie = (float**)calloc(19 * 19, sizeof(float*));
 
@@ -326,8 +291,6 @@ void Classificare1(const Mat src, const Mat binarexit) {
 		covariatie[i] = (float*)calloc(19 * 19, sizeof(float));
 		corelatie[i] = (float*)calloc(19 * 19, sizeof(float));
 	}
-
-	
 
 	for(int i=0;i<16;i++)
 		for (int j = 0; j < 16; j++) {
@@ -358,10 +321,6 @@ void Classificare1(const Mat src, const Mat binarexit) {
 				whitePatches.push_back(whitePatchesAux);
 			}
 		}
-
-
-
-
 
 	int channels[] = { 0 }; 
 	int histSize[] = { 256 };
@@ -406,14 +365,6 @@ void Classificare1(const Mat src, const Mat binarexit) {
 			imshow("whitepach " + j, whitePatches[j]);
 		}
 	}
-		
-
-
-
-
-	
-
-
 }
 
 
@@ -809,39 +760,199 @@ std::vector<int> clusterContours(const std::vector<std::vector<cv::Point>>& cont
 
 
 std::vector<std::vector<cv::Point>> mergeContours(const std::vector<std::vector<cv::Point>>& contours, double threshold) {
-	std::vector<cv::Point> centroids;
+	std::vector<std::vector<cv::Point>> oldnewContours(contours.begin(), contours.end());
+
+	bool ok = true;
+	while (ok) {
+		std::vector<cv::Point> centroids;
 
 	for (const auto& contour : contours) {
 		cv::Moments m = cv::moments(contour);
 		centroids.push_back(cv::Point(static_cast<int>(m.m10 / m.m00), static_cast<int>(m.m01 / m.m00)));
 	}
 
-	std::vector<bool> merged(contours.size(), false);
+	
 	std::vector<std::vector<cv::Point>> newContours;
 
-	for (size_t i = 0; i < contours.size(); ++i) {
-		if (!merged[i]) {
-			cv::Rect boundingBox = cv::boundingRect(contours[i]);
+		ok = false;
+		std::vector<bool> merged(oldnewContours.size(), false);
+		for (size_t i = 0; i < oldnewContours.size(); ++i) {
+			if (!merged[i]) {
+				cv::Rect boundingBox = cv::boundingRect(oldnewContours[i]);
 
-			for (size_t j = i + 1; j < contours.size(); ++j) {
-				if (!merged[j] && distance(centroids[i], centroids[j]) < threshold) {
-					boundingBox |= cv::boundingRect(contours[j]); 
-					merged[j] = true;
+				for (size_t j = i + 1; j < oldnewContours.size(); ++j) {
+					if (!merged[j] && distance(centroids[i], centroids[j]) < threshold) {
+						boundingBox |= cv::boundingRect(oldnewContours[j]);
+						merged[j] = true;
+						ok = true;
+					}
 				}
+
+				std::vector<cv::Point> newContour;
+				newContour.push_back(boundingBox.tl());
+				newContour.push_back(cv::Point(boundingBox.x + boundingBox.width, boundingBox.y));
+				newContour.push_back(boundingBox.br());
+				newContour.push_back(cv::Point(boundingBox.x, boundingBox.y + boundingBox.height));
+				newContours.push_back(newContour);
+				merged[i] = true;
+
+			}
+		}
+		oldnewContours.assign(newContours.begin(), newContours.end());
+		newContours.empty();
+	}
+
+	return oldnewContours;
+}
+
+
+void testScore(Mat testImg) {
+	char fname[MAX_PATH];
+
+	openFileDlg(fname);
+	cv::Mat mask = imread(fname, IMREAD_GRAYSCALE);
+
+
+	cv::Mat outputImage2 = cv::Mat::zeros(testImg.size(), CV_8UC3);
+
+
+
+	float totalpoints = 0.0f;
+	float truepoints = 0.0f;
+	float falsepos = 0.0f;
+	float falseneg = 0.0f;
+	float IoU = 0.0f;
+	float score = 0.0f;
+
+	for (int i = 0; i < testImg.rows; i++) {
+		for (int j = 0; j < testImg.cols; j++) {
+			if (testImg.at<uchar>(i, j) == 255 && mask.at<uchar>(i, j) == 255) {
+				outputImage2.at<Vec3b>(i, j) = Vec3b(255, 0, 0);
+				truepoints++;
+			}
+			if (mask.at<uchar>(i, j) == 255) {
+				totalpoints++;
 			}
 
-			std::vector<cv::Point> newContour;
-			newContour.push_back(boundingBox.tl());
-			newContour.push_back(cv::Point(boundingBox.x + boundingBox.width, boundingBox.y));
-			newContour.push_back(boundingBox.br());
-			newContour.push_back(cv::Point(boundingBox.x, boundingBox.y + boundingBox.height));
-			newContours.push_back(newContour);
-			merged[i] = true;
+			if (testImg.at<uchar>(i, j) == 255 && mask.at<uchar>(i, j) != 255) {
+				outputImage2.at<Vec3b>(i, j) = Vec3b(0, 255, 0);
+				falsepos++;
+			}
+
+			if (testImg.at<uchar>(i, j) != 255 && mask.at<uchar>(i, j) == 255) {
+				outputImage2.at<Vec3b>(i, j) = Vec3b(0, 0, 255);
+				falseneg++;
+			}
+
 		}
 	}
 
-	return newContours;
+	if (totalpoints != 0)
+		score = truepoints * 100 / totalpoints;
+
+	std::cout << "\nIOU: " << truepoints / (truepoints + falsepos + falseneg);
+
+	imshow("score", outputImage2);
+	std::cout << "\nscore: " << score << "\n";
+
+	//Score E
+
+
 }
+
+int findClosestContourToCenter(const std::vector<std::vector<cv::Point>>& contours, const cv::Size& imageSize) {
+	int closestIndex = -1;
+	double minDistanceToCenter = DBL_MAX;
+
+	cv::Point2f imageCenter(static_cast<float>(imageSize.width / 2.0), static_cast<float>(imageSize.height / 2.0));
+
+	for (size_t i = 0; i < contours.size(); i++) {
+		for (const auto& point : contours[i]) {
+			double distanceToCenter = sqrt(pow(point.x-imageCenter.x,2)-pow(point.y - imageCenter.y, 2));
+			if (distanceToCenter < minDistanceToCenter) {
+				minDistanceToCenter = distanceToCenter;
+				closestIndex = static_cast<int>(i);
+			}
+		}
+	}
+
+	return closestIndex;
+}
+
+bool isValidPixel(const Mat& binaryImage, int r, int c) {
+	return r >= 0 && r < binaryImage.rows && c >= 0 && c < binaryImage.cols && binaryImage.at<uchar>(r, c) == 255;
+}
+
+Mat etichetare(const Mat src, float distance ,int &nretichete) {
+
+	double distanceC = INT_MAX;
+	cv::Point2f imageCenter(static_cast<float>(src.rows / 2.0), static_cast<float>(src.cols / 2.0));
+	Mat etichete = cv::Mat::zeros(src.size(), CV_64F);
+	int ct = 1;
+	for (int i = 0; i < src.rows; i++) {
+		for (int j = 0; j < src.cols; j++) {
+			if (src.at<uchar>(i, j) == 255 && etichete.at<double>(i,j)==0) {
+				int min = INT_MAX;
+				std::stack<std::pair<int, int>> pixelStack;
+				pixelStack.push(std::make_pair(i, j));
+
+				while (!pixelStack.empty()) {
+					int curR = pixelStack.top().first;
+					int curC = pixelStack.top().second;
+					pixelStack.pop();
+
+					// Atribuirea etichetei
+					etichete.at<double>(curR, curC) = ct;
+					int dis = 1;
+					// Verificarea vecinilor pentru a vedea dacă sunt conectați
+					if(curR > 0 && curR < src.rows-1 && curC > 0 && curC < src.cols-1)
+					if (src.at<uchar>(curR - 1, curC) == 0 || src.at<uchar>(curR + 1, curC) == 0 || src.at<uchar>(curR, curC - 1) == 0 || src.at<uchar>(curR, curC + 1) == 0)
+					{
+						dis = distance;
+					}
+				
+					for (int dr = -dis; dr <= dis; ++dr) {
+						for (int dc = -dis; dc <= dis; ++dc) {
+							int newR = curR + dr;
+							int newC = curC + dc;
+							if (isValidPixel(src, newR, newC) && etichete.at<double>(newR, newC) == 0) {
+								pixelStack.push(std::make_pair(newR, newC));
+							}
+						}
+					}
+				}
+
+				// Incrementarea etichetei pentru următorul obiect
+				++ct;
+
+				
+			}
+		}
+	}
+	nretichete = ct - 1;
+	return etichete;
+}
+
+int calculateCenterLabel(Mat src, Mat labels) {
+	cv::Point2f imageCenter(static_cast<float>(src.cols / 2.0), static_cast<float>(src.rows / 2.0));
+
+	double min = INT_MAX;
+	int label=0;
+
+	for(int i=0;i<src.rows;i++)
+		for (int j = 0; j < src.cols; j++) {
+			if (src.at<uchar>(i, j) == 255) {
+				double distanceToCenter = sqrt(pow(j - imageCenter.x, 2) - pow(i - imageCenter.y, 2));
+				if (min > distanceToCenter) {
+					min = distanceToCenter;
+					label = labels.at<double>(i, j);
+				}
+			}
+		}
+
+	return label;
+}
+
 
 
 
@@ -849,6 +960,7 @@ void v3() {
 	char fname[MAX_PATH];
 	while (openFileDlg(fname)) {
 		cv::Mat retina = imread(fname,IMREAD_GRAYSCALE);
+		cv::Mat colorRetina= imread(fname, IMREAD_COLOR);
 		imshow("retina", retina);
 
 		Mat binaryImage;
@@ -880,27 +992,53 @@ void v3() {
 
 		// Set the number of clusters and the merge distance
 		int k = 2; // For example, you want to cluster into 3 groups
-		double mergeDistance = 75.0;
+		double mergeDistance = 50.0f;
 
 		// Perform clustering on the contours
 		std::vector<int> clusterLabels = clusterContours(contours, k, mergeDistance);
 		std::vector<std::vector<cv::Point>> mergedContours = mergeContours(contours, mergeDistance);
 		std::cout << clusterLabels.size() << "\n";
 
-		//DEBUG S
 
+		int nretichete;
+		Mat etic = etichetare(result, 19, nretichete);
+		cv::Mat etichtaImg = cv::Mat::zeros(retina.size(), CV_8UC3);
+		int label = calculateCenterLabel(result, etic);
+		Mat Final= cv::Mat::zeros(retina.size(), CV_8UC1);
+		std::cout << " label \n" << label << " label \n";
+		for(int i=0;i<Final.rows;i++)
+			for (int j = 0; j < Final.cols; j++) {
+				if(etic.at<double>(i,j)==label)
+				Final.at<uchar>(i, j) = result.at<uchar>(i, j);
+			}
+
+		imshow("FINALL", Final);
 		std::default_random_engine gen;
 		std::uniform_int_distribution<int>	d(0, 255);
 
 
-		std::vector<cv::Scalar> colors;
+		std::vector<cv::Vec3b> colors;
 		std::random_device rd;
 		std::mt19937 rng(rd());
 		std::uniform_int_distribution<int> uni(0, 255);
-		for (int i = 0; i < k; ++i) {
-			colors.push_back(cv::Scalar(uni(rng), uni(rng), uni(rng)));
+		colors.push_back(cv::Vec3b(0,0,0));
+		for (int i = 1; i <= nretichete; ++i) {
+			colors.push_back(cv::Vec3b(uni(rng), uni(rng), uni(rng)));
 		}
 
+		for (int i = 0; i < etichtaImg.rows; i++) {
+			for (int j = 0; j < etichtaImg.cols; j++) {
+				if(result.at<uchar>(i,j) == 255)
+				etichtaImg.at<Vec3b>(i, j)= colors[etic.at<double>(i,j)];
+			}
+		}
+		std::cout << "12";
+
+		imshow("etichete", etichtaImg);
+
+		//DEBUG S
+
+	
 		// Create an output image
 		cv::Mat outputImage = cv::Mat::zeros(retina.size(), CV_8UC3);
 		std::cout << "trece";
@@ -908,53 +1046,55 @@ void v3() {
 		std::vector<Vec3b> colorss;
 
 		for (size_t i = 0; i < mergedContours.size(); i++) {
-			
+			std::cout << "nr contours: " << mergedContours.size() << "\n";
 			int randint = d(gen);
 			Vec3b color = Vec3b(d(gen), d(gen), d(gen));
 			colorss.push_back(color);
-			cv::drawContours(outputImage, mergedContours, i, color, cv::FILLED);
+			cv::drawContours(outputImage, mergedContours, i, color,cv::FILLED);
 			//cv::drawContours(outputImage, mergedContours, i, colors[clusterLabels[i]], cv::FILLED);
+			String l = "Clusters" + i;
+			cv::imshow(l, outputImage);
+
 
 		}
 		std::cout << "trece";
 		cv::imshow("Clusters", outputImage);
+		cv::Mat result3;
 
+		colorRetina.copyTo(result3, outputImage);
 
+		cv::imshow("Clusters2", result3);
+
+		cv::imshow("result", result);
 
 		//DEBUG E
 
 
 
 		//Score S
+		std::cout << "test1: \n";
 
-		openFileDlg(fname);
-		cv::Mat mask = imread(fname, IMREAD_GRAYSCALE);
+		testScore(result); 
+		std::cout << "\n";
 
 
-		cv::Mat outputImage2 = cv::Mat::zeros(retina.size(), CV_8UC3);
+		int closestIndex = findClosestContourToCenter(mergedContours, retina.size());
 
-		float totalpoints = 0.0f;
-		float points = 0.0f;
-		float score = 0.0f;
-		for (int i = 0; i < retina.rows; i++) {
-			for (int j = 0; j < retina.cols; j++) {
-				if (result.at<uchar>(i, j) == 255 && mask.at<uchar>(i, j) == 255) {
-					outputImage2.at<Vec3b>(i, j) = Vec3b(255, 0, 0);
-					points++;
-				}
-				if (mask.at<uchar>(i, j) == 255) {
-					totalpoints++;
-				}
-			}
-		}
+		// Create a mask image
+		cv::Mat mask = cv::Mat::zeros(retina.size(), CV_8UC1);
 
-		if (points != 0)
-			score = points*100/ totalpoints ;
-		imshow("score", outputImage2);
-		std::cout << "score: " << score << "\n";
+		// Draw the closest contour on the mask
+		cv::drawContours(mask, contours, closestIndex, cv::Scalar(255), cv::FILLED);
 
-		//Score E
+		// Extract only the pixels corresponding to the closest contour from the original image
+		cv::Mat result2;
+		retina.copyTo(result2, mask);
 
+		// Display the result
+		cv::imshow("Closest Contour", result2);
+
+		std::cout << "last\n";
+		testScore(Final);
 
 		waitKey();
 	}
