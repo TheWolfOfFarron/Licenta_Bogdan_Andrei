@@ -28,8 +28,8 @@ salveaza countour ca si copie si afiseazo dupa
 */
 
 
-
-
+Mat etichetare(const Mat src, float distance, int& nretichete);
+int calculateCenterLabel(Mat src, Mat labels);
 
 
 Mat vascularSeg(Mat img) {
@@ -552,6 +552,21 @@ void v2() {
 	//	Classificare1(retine, important);
 		//Mat s = deteleLines(thresholded);
 		//imshow("retarded", s);
+
+		int nretichete;
+		Mat etic = etichetare(thresholded, 19, nretichete);
+		cv::Mat etichtaImg = cv::Mat::zeros(retina.size(), CV_8UC3);
+		int label = calculateCenterLabel(thresholded, etic);
+		Mat Final = cv::Mat::zeros(retina.size(), CV_8UC1);
+		std::cout << " label \n" << label << " label \n";
+		for (int i = 0; i < Final.rows; i++)
+			for (int j = 0; j < Final.cols; j++) {
+				if (etic.at<double>(i, j) == label)
+					Final.at<uchar>(i, j) = thresholded.at<uchar>(i, j);
+			}
+
+		imshow("FINALL", Final);
+
 
 		std::vector<Mat> SmallPaches = getRegions(boxes, retine);
 		std::vector<Mat> ReSmallPaches = resizeVector(SmallPaches);
