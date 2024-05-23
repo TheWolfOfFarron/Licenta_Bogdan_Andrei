@@ -13,6 +13,7 @@
 #include <random>
 #include <limits>
 #include <stack>
+#include <numeric>
 
 
 
@@ -25,6 +26,51 @@ wchar_t* projectPath;
 
 Mat etichetare(const Mat src, float distance, int& nretichete);
 int calculateCenterLabel(Mat src, Mat labels);
+
+
+
+struct BiomarkerResults {
+	double vesselDensity;
+	double meanIntensity;
+	double stdIntensity;
+	std::vector<double> areas;
+	std::vector<double> perimeters;
+};
+
+
+BiomarkerResults extractBiomarkers(const cv::Mat& image) {
+	BiomarkerResults results;
+	// Find contours
+	std::vector<std::vector<cv::Point>> contours;
+	cv::findContours(image, contours, cv::RETR_TREE, cv::CHAIN_APPROX_SIMPLE);
+
+	// Calculate areas and perimeters
+	for (const auto& contour : contours) {
+		results.areas.push_back(cv::contourArea(contour));
+		results.perimeters.push_back(cv::arcLength(contour, true));
+	}
+
+	// Calculate vessel density
+	double vesselArea = cv::countNonZero(image);
+	double totalArea = image.total();
+	results.vesselDensity = vesselArea / totalArea;
+
+	// Calculate mean and standard deviation of intensity
+	cv::Scalar mean, stddev;
+	cv::meanStdDev(image, mean, stddev);
+	results.meanIntensity = mean[0];
+	results.stdIntensity = stddev[0];
+
+	// Branching points detection (simple approach for demonstration)
+	
+	
+
+	return results;
+
+
+
+}
+
 
 
 Mat vascularSeg(Mat img) {
@@ -962,6 +1008,9 @@ int calculateCenterLabel(Mat src, Mat labels) {
 
 	return label;
 }
+
+
+
 
 
 
