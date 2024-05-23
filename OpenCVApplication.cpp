@@ -21,11 +21,6 @@ wchar_t* projectPath;
 
 
 
-/*
-TO DO 
-calculeaza cel mai apropiat punct de centru 
-salveaza countour ca si copie si afiseazo dupa
-*/
 
 
 Mat etichetare(const Mat src, float distance, int& nretichete);
