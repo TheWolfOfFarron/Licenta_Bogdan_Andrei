@@ -5,19 +5,20 @@ import subprocess
 import os
 import csv
 import zipfile
-
+import threading
 
 class ImageApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Image and CSV Viewer")
-        self.root.geometry("600x600")  # Set initial window size to 600x600 pixels
+        self.root.geometry("600x600")  
 
-        self.image_folder = "D:/facultate/Licenta/data corect/datasetce imi trebe/10302/fs"  # Change this to your image folder
+        self.image_folder = "Images"
         self.images = []
         self.current_image_index = 0
-
-        self.delete_all_files_in_image_folder()  # Delete all files in image folder at startup
+        self.input_name= "no image"
+        self.output_name= "no image"
+        self.delete_all_files_in_image_folder()
         self.create_widgets()
         self.refresh_image_folder()
         self.schedule_image_folder_refresh()
@@ -33,35 +34,33 @@ class ImageApp:
             print(f"Failed to delete files in {self.image_folder}: {e}")
 
     def create_widgets(self):
-        # Select Image button (A)
         self.select_image_button = tk.Button(self.root, text="Select Image", command=self.select_image)
         self.select_image_button.place(relx=0, rely=0, relwidth=0.5, relheight=0.05)
 
-        # Label for input image (InputImage)
         self.input_image_label = tk.Label(self.root, text="Input Image")
         self.input_image_label.place(relx=0, rely=0.05, relwidth=0.5, relheight=0.05)
 
-        # Image label (B)
         self.image_label = tk.Label(self.root, text="No image selected", bg="lightgray")
         self.image_label.place(relx=0, rely=0.10, relwidth=0.5, relheight=0.4)
 
-        # Label for slideshow output (Output)
         self.output_label = tk.Label(self.root, text="Output")
         self.output_label.place(relx=0.5, rely=0.05, relwidth=0.5, relheight=0.05)
 
-        # Image viewer controlled by arrow keys (D)
         self.image_panel = tk.Label(self.root, bg="lightgray")
         self.image_panel.place(relx=0.5, rely=0.10, relwidth=0.5, relheight=0.4)
 
-        # Open Program button (C)
+        self.input_image_name = tk.Label(self.root, text=self.input_name)
+        self.input_image_name.place(relx=0, rely=0.50, relwidth=0.5, relheight=0.05)
+
         self.open_program_button = tk.Button(self.root, text="Open Program with Image", command=self.open_program)
-        self.open_program_button.place(relx=0, rely=0.50, relwidth=0.5, relheight=0.05)
+        self.open_program_button.place(relx=0, rely=0.55, relwidth=0.5, relheight=0.05)
 
-        # Save Images button
+        self.output_image_name = tk.Label(self.root, text=self.output_name)
+        self.output_image_name.place(relx=0.5, rely=0.50, relwidth=0.5, relheight=0.05)
+
         self.save_images_button = tk.Button(self.root, text="Save Images to Zip", command=self.save_images_to_zip)
-        self.save_images_button.place(relx=0.5, rely=0.50, relwidth=0.5, relheight=0.05)
+        self.save_images_button.place(relx=0.5, rely=0.55, relwidth=0.5, relheight=0.05)
 
-        # Table to display CSV data (E)
         self.table = ttk.Treeview(self.root, columns=('Column1', 'Column2'), show='headings')
         self.table.heading('Column1', text='NAME')
         self.table.heading('Column2', text='VALUE')
@@ -76,6 +75,7 @@ class ImageApp:
         if self.image_path:
             self.image_label.config(text=self.image_path)
             self.show_selected_image()
+            self.input_image_name.config(text= os.path.basename(self.image_path))
 
     def show_selected_image(self):
         try:
@@ -84,20 +84,25 @@ class ImageApp:
             img = ImageTk.PhotoImage(img)
             self.image_label.config(image=img)
             self.image_label.image = img
+            self.output_name= os.path.basename(self.image_path)
             print(f"Uploaded image: {self.image_path}")  # Print the name of the uploaded image
         except Exception as e:
             print(f"Failed to load image: {e}")
 
     def open_program(self):
-        # Clear the table
         self.clear_table()
         self.delete_all_files_in_image_folder()
         if hasattr(self, 'image_path'):
-            try:
-                subprocess.run(['D:/facultate/Licenta/project/x64/Debug/OpenCVApplication', self.image_path], check=True)
-                self.load_csv_data('test_scoresss.csv')  # Change this to your CSV file path
-            except subprocess.CalledProcessError as e:
-                print(f"Failed to open program: {e}")
+            thread = threading.Thread(target=self.run_program)
+            thread.start()
+
+    def run_program(self):
+        try:
+            subprocess.run(['opencv/OpenCVApplication', self.image_path], check=True)
+            self.load_csv_data('Images/test_scoresss.csv')  # Change this to your CSV file path
+        except subprocess.CalledProcessError as e:
+            self.output_image_name.config(text= f"Failed to open program: {e}")
+            print(f"Failed to open program: {e}")
 
     def clear_table(self):
         for item in self.table.get_children():
@@ -128,7 +133,7 @@ class ImageApp:
 
     def schedule_image_folder_refresh(self):
         self.refresh_image_folder()
-        self.root.after(5000, self.schedule_image_folder_refresh)  # Refresh every 5000 milliseconds (5 seconds)
+        self.root.after(1000, self.schedule_image_folder_refresh)  # Refresh every 5000 milliseconds (5 seconds)
 
     def show_image(self):
         if self.images:
@@ -140,6 +145,7 @@ class ImageApp:
                 img = ImageTk.PhotoImage(img)
                 self.image_panel.config(image=img)
                 self.image_panel.image = img
+                self.output_image_name.config(text= os.path.basename(image_path))
             except Exception as e:
                 print(f"Failed to load image: {e}")
         else:

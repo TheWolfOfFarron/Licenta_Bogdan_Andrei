@@ -1359,7 +1359,7 @@ void v4() {
 
 void saveBiomarkers(BiomarkerResults biomarkers) {
 	std::ofstream file;
-	file.open("test_scoresss.csv", std::ios::out );
+	file.open("Images/test_scoresss.csv", std::ios::out );
 	// Check if file is newly created or empty, and write the header
 	if (file.tellp() == 0) {
 		//	file << "Index,Total Points,True Points,False Positives,False Negatives,True Negatives,IoU,Accuracy,Score\n";
@@ -1387,7 +1387,7 @@ void saveBiomarkers(BiomarkerResults biomarkers) {
 void appReady(Mat retina){
 
 		
-	imwrite("D:/facultate/Licenta/data corect/datasetce imi trebe/10302/fs/retina.png", retina);
+	imwrite("Images/retina.png", retina);
 
 	Mat contrasted = contrast(retina, 2);
 		
@@ -1396,19 +1396,19 @@ void appReady(Mat retina){
 	Mat binaryImage;
 	cv::threshold(contrasted, binaryImage, 140, 255, THRESH_BINARY);
 	
-	imwrite("D:/facultate/Licenta/data corect/datasetce imi trebe/10302/fs/binaryImage.png", binaryImage);
+	imwrite("Images/binaryImage.png", binaryImage);
 
 	Mat out2 = removeSmallComponentsNoise(binaryImage, 100);
 	std::cout << "removeSmallComponentsNoise\n";
 		
-	imwrite("D:/facultate/Licenta/data corect/datasetce imi trebe/10302/fs/smalComps.png", out2);
+	imwrite("Images/smalComps.png", out2);
 
 
 	double areaThreshold = 60.0;
 	Mat result = processContours(out2, areaThreshold);
 	std::cout << "processContours\n";
 		
-	imwrite("D:/facultate/Licenta/data corect/datasetce imi trebe/10302/fs/processContours.png", result);
+	imwrite("Images/processContours.png", result);
 
 	int nretichete;
 	Mat etic = etichetare(result, 19, nretichete);
@@ -1438,7 +1438,7 @@ void appReady(Mat retina){
 
 	
 
-	imwrite("D:/facultate/Licenta/data corect/datasetce imi trebe/10302/fs/etichtaImg.png", etichtaImg);
+	imwrite("Images/etichtaImg.png", etichtaImg);
 
 	int label = calculateCenterLabel(result, etic);
 
@@ -1452,7 +1452,7 @@ void appReady(Mat retina){
 			if (etic.at<double>(i, j) == label)
 				Final.at<uchar>(i, j) = result.at<uchar>(i, j);
 		}
-	imwrite("D:/facultate/Licenta/data corect/datasetce imi trebe/10302/fs/Final.png", Final);
+	imwrite("Images/Final.png", Final);
 	Mat biomarkers=cv::Mat::zeros(retina.size(), CV_8UC1);
 	Mat Overlay=cv::Mat::zeros(retina.size(), CV_8UC3);
 	for (int i = 0; i < Final.rows; i++)
@@ -1466,8 +1466,8 @@ void appReady(Mat retina){
 			}
 
 		}
-	imwrite("D:/facultate/Licenta/data corect/datasetce imi trebe/10302/fs/trueImage.png", biomarkers);
-	imwrite("D:/facultate/Licenta/data corect/datasetce imi trebe/10302/fs/Overlay.png", Overlay);
+	imwrite("Images/trueImage.png", biomarkers);
+	imwrite("Images/Overlay.png", Overlay);
 
 	saveBiomarkers(extractBiomarkers(biomarkers));
 }
